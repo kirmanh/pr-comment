@@ -1,30 +1,96 @@
-const core = require('@actions/core')
-const { wait } = require('./wait')
-
 /**
- * The main function for the action.
- * @returns {Promise<void>} Resolves when the action is complete.
+ * Unit tests for the action's main functionality, src/main.js
  */
-async function run() {
-  try {
-    const ms = core.getInput('milliseconds', { required: true })
+const core = require('@actions/core')
+const main = require('../src/main')
 
-    // Debug logs are only output if the `ACTIONS_STEP_DEBUG` secret is true
-    core.debug(`Waiting ${ms} milliseconds ...`)
+// Mock the GitHub Actions core library
+const debugMock = jest.spyOn(core, 'debug').mockImplementation()
+const getInputMock = jest.spyOn(core, 'getInput').mockImplementation()
+const setFailedMock = jest.spyOn(core, 'setFailed').mockImplementation()
+const setOutputMock = jest.spyOn(core, 'setOutput').mockImplementation()
 
-    // Log the current timestamp, wait, then log the new timestamp
-    core.debug(new Date().toTimeString())
-    await wait(parseInt(ms, 10))
-    core.debug(new Date().toTimeString())
+// Mock the action's main function
+const runMock = jest.spyOn(main, 'run')
 
-    // Set outputs for other workflow steps to use
-    core.setOutput('time', new Date().toTimeString())
-  } catch (error) {
-    // Fail the workflow run if an error occurs
-    core.setFailed(error.message)
-  }
-}
+// Other utilities
+const timeRegex = /^\d{2}:\d{2}:\d{2}/
 
-module.exports = {
-  run
-}
+describe('action', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+  })
+
+  it('sets the time output', async () => {
+    // Set the action's inputs as return values from core.getInput()
+    getInputMock.mockImplementation(name => {
+      switch (name) {
+        case 'milliseconds':
+          return '500'
+        default:
+          return ''
+      }
+    })
+
+    await main.run()
+    expect(runMock).toHaveReturned()
+
+    // Verify that all of the core library functions were called correctly
+    expect(debugMock).toHaveBeenNthCalledWith(1, 'Waiting 500 milliseconds ...')
+    expect(debugMock).toHaveBeenNthCalledWith(
+      2,
+      expect.stringMatching(timeRegex)
+    )
+    expect(debugMock).toHaveBeenNthCalledWith(
+      3,
+      expect.stringMatching(timeRegex)
+    )
+    expect(setOutputMock).toHaveBeenNthCalledWith(
+      1,
+      'time',
+      expect.stringMatching(timeRegex)
+    )
+  })
+
+  it('sets a failed status', async () => {
+    // Set the action's inputs as return values from core.getInput()
+    getInputMock.mockImplementation(name => {
+      switch (name) {
+        case 'milliseconds':
+          return 'this is not a number'
+        default:
+          return ''
+      }
+    })
+
+    await main.run()
+    expect(runMock).toHaveReturned()
+
+    // Verify that all of the core library functions were called correctly
+    expect(setFailedMock).toHaveBeenNthCalledWith(
+      1,
+      'milliseconds not a number'
+    )
+  })
+
+  it('fails if no input is provided', async () => {
+    // Set the action's inputs as return values from core.getInput()
+    getInputMock.mockImplementation(name => {
+      switch (name) {
+        case 'milliseconds':
+          throw new Error('Input required and not supplied: milliseconds')
+        default:
+          return ''
+      }
+    })
+
+    await main.run()
+    expect(runMock).toHaveReturned()
+
+    // Verify that all of the core library functions were called correctly
+    expect(setFailedMock).toHaveBeenNthCalledWith(
+      1,
+      'Input required and not supplied: milliseconds'
+    )
+  })
+})
